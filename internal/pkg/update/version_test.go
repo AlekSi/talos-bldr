@@ -5,6 +5,11 @@
 package update
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +26,36 @@ func TestExtractVersion(t *testing.T) {
 			actualV := extractVersion(s)
 			require.NotNil(t, actualV)
 			assert.Equal(t, expected, actualV.String())
+		})
+	}
+}
+
+func TestParseHTML(t *testing.T) {
+	matches, err := filepath.Glob("testdata/*.json")
+	require.NoError(t, err)
+
+	for _, match := range matches {
+		name := strings.TrimPrefix(strings.TrimSuffix(match, ".json"), "testdata/")
+		t.Run(name, func(t *testing.T) {
+			// read expected versions
+			b, err := ioutil.ReadFile(match)
+			require.NoError(t, err)
+			var expected []string
+			err = json.Unmarshal(b, &expected)
+			require.NoError(t, err)
+
+			// read actual versions
+			r, err := os.Open(strings.TrimSuffix(match, ".json") + ".html")
+			require.NoError(t, err)
+			defer r.Close()
+			actualV := parseHTML(r)
+			require.NotNil(t, actualV)
+			actual := make([]string, len(actualV))
+			for i, a := range actualV {
+				actual[i] = a.String()
+			}
+
+			assert.Equal(t, expected, actual)
 		})
 	}
 }

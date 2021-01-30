@@ -5,6 +5,8 @@
 package update
 
 import (
+	"encoding/xml"
+	"io"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -14,10 +16,12 @@ import (
 
 var (
 	extensions = map[string]bool{
-		".gz":  true,
-		".src": true,
-		".tar": true,
-		".xz":  true,
+		".diff": true,
+		".gz":   true,
+		".src":  true,
+		".tar":  true,
+		".xdp":  true,
+		".xz":   true,
 	}
 )
 
@@ -45,5 +49,39 @@ func extractVersion(s string) *semver.Version {
 	s = s[i:]
 
 	res, _ := semver.NewVersion(s)
+	return res
+}
+
+func parseHTML(r io.Reader) []*semver.Version {
+	d := xml.NewDecoder(r)
+	d.Strict = false
+	d.AutoClose = xml.HTMLAutoClose
+	d.Entity = xml.HTMLEntity
+
+	var res []*semver.Version
+	for {
+		t, err := d.Token()
+		if err != nil {
+			break
+		}
+
+		el, ok := t.(xml.StartElement)
+		if !ok {
+			continue
+		}
+
+		if el.Name.Local != "a" {
+			continue
+		}
+		for _, attr := range el.Attr {
+			if attr.Name.Local != "href" {
+				continue
+			}
+			if v := extractVersion(attr.Value); v != nil {
+				res = append(res, v)
+			}
+		}
+	}
+
 	return res
 }
