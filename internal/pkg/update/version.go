@@ -5,30 +5,44 @@
 package update
 
 import (
+	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/Masterminds/semver"
 )
 
 var (
-	extensions = []string{".tar", ".gz", ".xz"}
+	extensions = map[string]bool{
+		".gz":  true,
+		".src": true,
+		".tar": true,
+		".xz":  true,
+	}
 )
 
 func extractVersion(s string) *semver.Version {
 	// extract file name
-	s = strings.TrimPrefix(s, "https://ftp.gnu.org/gnu/automake/automake-")
+	if u, _ := url.Parse(s); u != nil {
+		s = u.Path
+	}
+	s = filepath.Base(s)
 
-	// remove extensions
+	// remove common extensions
 	found := true
 	for found {
-		found = false
-		for _, ext := range extensions {
-			if strings.HasSuffix(s, ext) {
-				s = strings.TrimSuffix(s, ext)
-				found = true
-			}
+		ext := filepath.Ext(s)
+		if found = extensions[ext]; found {
+			s = strings.TrimSuffix(s, ext)
 		}
 	}
+
+	// remove name prefix
+	i := strings.IndexAny(s, "0123456789")
+	if i < 0 {
+		return nil
+	}
+	s = s[i:]
 
 	res, _ := semver.NewVersion(s)
 	return res
