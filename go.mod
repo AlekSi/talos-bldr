@@ -1,10 +1,10 @@
 module github.com/talos-systems/bldr
 
-go 1.14
+go 1.15
 
 require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
-	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/alessio/shellescape v1.2.2
 	github.com/containerd/containerd v1.4.0-0
@@ -17,6 +17,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1
 	github.com/otiai10/copy v1.2.0
 	github.com/spf13/cobra v1.0.0
+	github.com/stretchr/testify v1.7.0
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	gopkg.in/yaml.v2 v2.3.0
 )
