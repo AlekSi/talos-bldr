@@ -7,6 +7,7 @@ package update
 import (
 	"encoding/json"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +19,12 @@ import (
 
 func TestExtractVersion(t *testing.T) {
 	for s, expected := range map[string]string{
-		"https://dl.google.com/go/go1.15.7.src.tar.gz":            "1.15.7",
-		"https://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz": "1.16.1",
+		"https://dl.google.com/go/go1.15.7.src.tar.gz": "1.15.7",
+
+		"automake-1.16.tar.gz":                                    "1.16.0",
+		"automake-1.16.1.tar.xz":                                  "1.16.1",
 		"https://ftp.gnu.org/gnu/automake/automake-1.16.tar.gz":   "1.16.0",
+		"https://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz": "1.16.1",
 	} {
 		t.Run(s, func(t *testing.T) {
 			actualV := extractVersion(s)
@@ -31,31 +35,38 @@ func TestExtractVersion(t *testing.T) {
 }
 
 func TestParseHTML(t *testing.T) {
+	type testdata struct {
+		SourceURL string            `json:"source_url"`
+		Versions  map[string]string `json:"versions"`
+	}
+
 	matches, err := filepath.Glob("testdata/*.json")
 	require.NoError(t, err)
 
 	for _, match := range matches {
 		name := strings.TrimPrefix(strings.TrimSuffix(match, ".json"), "testdata/")
 		t.Run(name, func(t *testing.T) {
-			// read expected versions
+			// read testdata
 			b, err := ioutil.ReadFile(match)
 			require.NoError(t, err)
-			var expected []string
-			err = json.Unmarshal(b, &expected)
+			var td testdata
+			err = json.Unmarshal(b, &td)
+			require.NoError(t, err)
+			sourceURL, err := url.Parse(td.SourceURL)
 			require.NoError(t, err)
 
-			// read actual versions
+			// parse HTML
 			r, err := os.Open(strings.TrimSuffix(match, ".json") + ".html")
 			require.NoError(t, err)
 			defer r.Close()
-			actualV := parseHTML(r)
-			require.NotNil(t, actualV)
-			actual := make([]string, len(actualV))
-			for i, a := range actualV {
-				actual[i] = a.String()
+			actual := parseHTML(sourceURL, r)
+			require.NotNil(t, actual)
+			versions := make(map[string]string, len(actual))
+			for u, v := range actual {
+				versions[u.String()] = v.String()
 			}
 
-			assert.Equal(t, expected, actual)
+			assert.Equal(t, td.Versions, versions)
 		})
 	}
 }

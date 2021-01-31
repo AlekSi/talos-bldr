@@ -6,7 +6,9 @@ package update
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -15,15 +17,45 @@ import (
 )
 
 var (
-	extensions = map[string]bool{
-		".diff": true,
-		".gz":   true,
-		".src":  true,
-		".tar":  true,
-		".xdp":  true,
-		".xz":   true,
+	extensions = map[string]struct{}{
+		".diff": {},
+		".gz":   {},
+		".src":  {},
+		".tar":  {},
+		".xdp":  {},
+		".xz":   {},
 	}
 )
+
+func Latest(source string) (string, *url.URL, error) {
+	u, err := url.Parse(source)
+	if err != nil {
+		return "", nil, err
+	}
+	dirU := *u
+	dirU.Path = filepath.Dir(u.Path)
+
+	resp, err := http.Get(dirU.String())
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+
+	versions := parseHTML(u, resp.Body)
+	if len(versions) == 0 {
+		return "", nil, fmt.Errorf("no versions found in HTML")
+	}
+	latest := semver.MustParse("0.0.0")
+	var latestURL *url.URL
+	for u, v := range versions {
+		if latest.LessThan(v) {
+			latestURL = u
+			latest = v
+		}
+	}
+
+	return latest.String(), latestURL, nil
+}
 
 func extractVersion(s string) *semver.Version {
 	// extract file name
@@ -36,12 +68,12 @@ func extractVersion(s string) *semver.Version {
 	found := true
 	for found {
 		ext := filepath.Ext(s)
-		if found = extensions[ext]; found {
+		if _, found = extensions[ext]; found {
 			s = strings.TrimSuffix(s, ext)
 		}
 	}
 
-	// remove name prefix
+	// remove package name, keep only version
 	i := strings.IndexAny(s, "0123456789")
 	if i < 0 {
 		return nil
@@ -52,13 +84,13 @@ func extractVersion(s string) *semver.Version {
 	return res
 }
 
-func parseHTML(r io.Reader) []*semver.Version {
-	d := xml.NewDecoder(r)
+func parseHTML(sourceURL *url.URL, html io.Reader) map[*url.URL]*semver.Version {
+	d := xml.NewDecoder(html)
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
 	d.Entity = xml.HTMLEntity
 
-	var res []*semver.Version
+	res := make(map[*url.URL]*semver.Version)
 	for {
 		t, err := d.Token()
 		if err != nil {
@@ -78,7 +110,19 @@ func parseHTML(r io.Reader) []*semver.Version {
 				continue
 			}
 			if v := extractVersion(attr.Value); v != nil {
-				res = append(res, v)
+				if v.Prerelease() != "" {
+					continue
+				}
+
+				u, err := url.Parse(attr.Value)
+				if err != nil {
+					continue
+				}
+				if u.Host == "" {
+					u = sourceURL.ResolveReference(u)
+				}
+
+				res[u] = v
 			}
 		}
 	}
