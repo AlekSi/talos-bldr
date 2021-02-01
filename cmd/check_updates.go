@@ -5,16 +5,24 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"sort"
+	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/talos-systems/bldr/internal/pkg/solver"
 	"github.com/talos-systems/bldr/internal/pkg/update"
 )
+
+type updateInfo struct {
+	*update.UpdateInfo
+}
 
 // checkUpdatesCmd represents the check-updates command.
 var checkUpdatesCmd = &cobra.Command{
@@ -39,23 +47,68 @@ var checkUpdatesCmd = &cobra.Command{
 			l.SetOutput(ioutil.Discard)
 		}
 
-		for _, node := range packages.ToSet() {
-			for _, step := range node.Pkg.Steps {
-				for _, src := range step.Sources {
-					v, url, err := update.Latest(src.URL)
+		const concurrency = 10
+		var wg sync.WaitGroup
+		sources := make(chan string)
+		updates := make(chan *updateInfo)
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				for src := range sources {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					res, err := update.Latest(ctx, src)
+					cancel()
 					if err != nil {
 						l.Print(err)
 						continue
 					}
-					prefix := "no update"
-					if url.String() != src.URL {
-						prefix = "update available"
-						fmt.Fprintf(w, "%s\t%s\t%s\n", node.Pkg.Name, v, url)
+					updates <- &updateInfo{
+						UpdateInfo: res,
 					}
-					l.Printf("%s %s %s %s", prefix, node.Pkg.Name, v, url)
+				}
+			}()
+		}
+
+		var res []updateInfo
+		done := make(chan struct{})
+		go func() {
+			for update := range updates {
+				res = append(res, *update)
+			}
+			close(done)
+		}()
+
+		for _, node := range packages.ToSet() {
+			for _, step := range node.Pkg.Steps {
+				for _, src := range step.Sources {
+					sources <- src.URL
 				}
 			}
 		}
+		close(sources)
+		wg.Wait()
+		<-done
+
+		sort.Slice(res, func(i, j int) bool { return res[i].URL.String() < res[j].URL.String() })
+
+		for _, u := range res {
+			fmt.Fprintf(w, "%s\n", u.URL)
+		}
+
+		// v, url, err := update.Latest(src.URL)
+		// if err != nil {
+		// 	l.Print(err)
+		// 	continue
+		// }
+		// prefix := "no update"
+		// if url.String() != src.URL {
+		// 	prefix = "update available"
+		// 	fmt.Fprintf(w, "%s\t%s\t%s\n", node.Pkg.Name, v, url)
+		// }
+		// l.Printf("%s %s %s %s", prefix, node.Pkg.Name, v, url)
+
 		w.Flush()
 	},
 }

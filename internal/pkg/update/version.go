@@ -5,6 +5,7 @@
 package update
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 var (
 	extensions = map[string]struct{}{
+		".bz2":  {},
 		".diff": {},
 		".gz":   {},
 		".src":  {},
@@ -27,23 +29,39 @@ var (
 	}
 )
 
-func Latest(source string) (string, *url.URL, error) {
+type UpdateInfo struct {
+	UpdateAvailable bool
+	CurrentVersion  string
+	LatestVersion   string
+	URL             *url.URL
+}
+
+func Latest(ctx context.Context, source string) (*UpdateInfo, error) {
+	currentVersion, err := extractVersion(source)
+	if err != nil {
+		return nil, err
+	}
+
 	u, err := url.Parse(source)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	dirU := *u
 	dirU.Path = filepath.Dir(u.Path)
 
-	resp, err := http.Get(dirU.String())
+	req, err := http.NewRequestWithContext(ctx, "GET", dirU.String(), nil)
 	if err != nil {
-		return "", nil, err
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	versions := parseHTML(u, resp.Body)
 	if len(versions) == 0 {
-		return "", nil, fmt.Errorf("no versions found in HTML")
+		return nil, fmt.Errorf("no versions found in HTML")
 	}
 	latest := semver.MustParse("0.0.0")
 	var latestURL *url.URL
@@ -54,17 +72,23 @@ func Latest(source string) (string, *url.URL, error) {
 		}
 	}
 
-	return latest.String(), latestURL, nil
+	return &UpdateInfo{
+		UpdateAvailable: source == latestURL.String(),
+		CurrentVersion:  currentVersion.String(),
+		LatestVersion:   latest.String(),
+		URL:             latestURL,
+	}, nil
 }
 
 // extractVersion extracts SemVer version from file name or URL.
 // If version can't be extracted, nil is returned.
-func extractVersion(s string) *semver.Version {
+func extractVersion(s string) (*semver.Version, error) {
 	// extract file name
-	if u, _ := url.Parse(s); u != nil {
-		s = u.Path
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
 	}
-	s = filepath.Base(s)
+	s = filepath.Base(u.Path)
 
 	// remove common extensions
 	found := true
@@ -78,12 +102,15 @@ func extractVersion(s string) *semver.Version {
 	// remove package name, keep only version
 	i := strings.IndexAny(s, "0123456789")
 	if i < 0 {
-		return nil
+		return nil, fmt.Errorf("failed to remove package name from %q", s)
 	}
 	s = s[i:]
 
-	res, _ := semver.NewVersion(s)
-	return res
+	res, err := semver.NewVersion(s)
+	if err != nil {
+		return nil, fmt.Errorf("%q: %w", s, err)
+	}
+	return res, nil
 }
 
 func parseHTML(sourceURL *url.URL, html io.Reader) map[*url.URL]*semver.Version {
@@ -111,21 +138,25 @@ func parseHTML(sourceURL *url.URL, html io.Reader) map[*url.URL]*semver.Version 
 			if attr.Name.Local != "href" {
 				continue
 			}
-			if v := extractVersion(attr.Value); v != nil {
-				if v.Prerelease() != "" {
-					continue
-				}
 
-				u, err := url.Parse(attr.Value)
-				if err != nil {
-					continue
-				}
-				if u.Host == "" {
-					u = sourceURL.ResolveReference(u)
-				}
-
-				res[u] = v
+			v, err := extractVersion(attr.Value)
+			if err != nil {
+				continue
 			}
+
+			if v.Prerelease() != "" {
+				continue
+			}
+
+			u, err := url.Parse(attr.Value)
+			if err != nil {
+				continue
+			}
+			if u.Host == "" {
+				u = sourceURL.ResolveReference(u)
+			}
+
+			res[u] = v
 		}
 	}
 
