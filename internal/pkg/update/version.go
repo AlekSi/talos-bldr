@@ -57,6 +57,8 @@ func Latest(source string) (string, *url.URL, error) {
 	return latest.String(), latestURL, nil
 }
 
+// extractVersion extracts SemVer version from file name or URL.
+// If version can't be extracted, nil is returned.
 func extractVersion(s string) *semver.Version {
 	// extract file name
 	if u, _ := url.Parse(s); u != nil {
