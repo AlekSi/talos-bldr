@@ -89,6 +89,7 @@ var checkUpdatesCmd = &cobra.Command{
 		}
 		close(sources)
 		wg.Wait()
+		close(updates)
 		<-done
 
 		sort.Slice(res, func(i, j int) bool { return res[i].URL.String() < res[j].URL.String() })
