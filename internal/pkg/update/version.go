@@ -31,10 +31,9 @@ var (
 )
 
 type UpdateInfo struct {
-	UpdateAvailable bool
-	CurrentVersion  string
-	LatestVersion   string
-	URL             *url.URL
+	CurrentVersion string
+	LatestVersion  string
+	LatestURL      *url.URL
 }
 
 func Latest(ctx context.Context, source string) (*UpdateInfo, error) {
@@ -74,10 +73,9 @@ func Latest(ctx context.Context, source string) (*UpdateInfo, error) {
 	}
 
 	return &UpdateInfo{
-		UpdateAvailable: source == latestURL.String(),
-		CurrentVersion:  currentVersion.String(),
-		LatestVersion:   latest.String(),
-		URL:             latestURL,
+		CurrentVersion: currentVersion.String(),
+		LatestVersion:  latest.String(),
+		LatestURL:      latestURL,
 	}, nil
 }
 
@@ -114,8 +112,8 @@ func extractVersion(s string) (*semver.Version, error) {
 	return res, nil
 }
 
-func parseHTML(sourceURL *url.URL, html io.Reader) map[*url.URL]*semver.Version {
-	d := xml.NewDecoder(html)
+func parseHTML(pageURL *url.URL, pageHTML io.Reader) map[*url.URL]*semver.Version {
+	d := xml.NewDecoder(pageHTML)
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
 	d.Entity = xml.HTMLEntity
@@ -154,7 +152,7 @@ func parseHTML(sourceURL *url.URL, html io.Reader) map[*url.URL]*semver.Version 
 				continue
 			}
 			if u.Host == "" {
-				u = sourceURL.ResolveReference(u)
+				u = pageURL.ResolveReference(u)
 			}
 
 			res[u] = v

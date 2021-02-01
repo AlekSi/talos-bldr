@@ -20,8 +20,14 @@ import (
 	"github.com/talos-systems/bldr/internal/pkg/update"
 )
 
+type packageInfo struct {
+	name   string
+	source string
+}
+
 type updateInfo struct {
 	*update.UpdateInfo
+	name string
 }
 
 // checkUpdatesCmd represents the check-updates command.
@@ -49,7 +55,7 @@ var checkUpdatesCmd = &cobra.Command{
 
 		const concurrency = 10
 		var wg sync.WaitGroup
-		sources := make(chan string)
+		sources := make(chan *packageInfo)
 		updates := make(chan *updateInfo)
 		for i := 0; i < concurrency; i++ {
 			wg.Add(1)
@@ -58,7 +64,7 @@ var checkUpdatesCmd = &cobra.Command{
 
 				for src := range sources {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					res, err := update.Latest(ctx, src)
+					res, err := update.Latest(ctx, src.source)
 					cancel()
 					if err != nil {
 						l.Print(err)
@@ -66,6 +72,7 @@ var checkUpdatesCmd = &cobra.Command{
 					}
 					updates <- &updateInfo{
 						UpdateInfo: res,
+						name:       src.name,
 					}
 				}
 			}()
@@ -83,7 +90,10 @@ var checkUpdatesCmd = &cobra.Command{
 		for _, node := range packages.ToSet() {
 			for _, step := range node.Pkg.Steps {
 				for _, src := range step.Sources {
-					sources <- src.URL
+					sources <- &packageInfo{
+						name:   node.Pkg.Name,
+						source: src.URL,
+					}
 				}
 			}
 		}
@@ -92,10 +102,12 @@ var checkUpdatesCmd = &cobra.Command{
 		close(updates)
 		<-done
 
-		sort.Slice(res, func(i, j int) bool { return res[i].URL.String() < res[j].URL.String() })
+		sort.Slice(res, func(i, j int) bool { return res[i].LatestURL.String() < res[j].LatestURL.String() })
 
 		for _, u := range res {
-			fmt.Fprintf(w, "%s\n", u.URL)
+			if u.CurrentVersion != u.LatestVersion {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", u.name, u.CurrentVersion, u.LatestVersion, u.LatestURL)
+			}
 		}
 
 		// v, url, err := update.Latest(src.URL)
