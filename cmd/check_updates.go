@@ -30,6 +30,8 @@ type updateInfo struct {
 	name string
 }
 
+var all bool
+
 // checkUpdatesCmd represents the check-updates command.
 var checkUpdatesCmd = &cobra.Command{
 	Use:   "check-updates",
@@ -102,10 +104,10 @@ var checkUpdatesCmd = &cobra.Command{
 		close(updates)
 		<-done
 
-		sort.Slice(res, func(i, j int) bool { return res[i].LatestURL.String() < res[j].LatestURL.String() })
+		sort.Slice(res, func(i, j int) bool { return res[i].name < res[j].name })
 
 		for _, u := range res {
-			if u.CurrentVersion != u.LatestVersion {
+			if all || u.CurrentVersion != u.LatestVersion {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", u.name, u.CurrentVersion, u.LatestVersion, u.LatestURL)
 			}
 		}
@@ -127,5 +129,6 @@ var checkUpdatesCmd = &cobra.Command{
 }
 
 func init() {
+	checkUpdatesCmd.Flags().BoolVarP(&all, "all", "a", false, "")
 	rootCmd.AddCommand(checkUpdatesCmd)
 }
