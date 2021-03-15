@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	extensions = map[string]struct{}{
+	commonExtensions = map[string]struct{}{
 		".bz2":  {},
 		".diff": {},
 		".gz":   {},
@@ -31,9 +31,12 @@ var (
 )
 
 type UpdateInfo struct {
+	// Current version, as extracted from the source URL.
 	CurrentVersion string
-	LatestVersion  string
-	LatestURL      *url.URL
+	// Latest version, as determined by the updater.
+	LatestVersion string
+	// Latest version's full absolute URL of the source.
+	LatestURL string
 }
 
 func Latest(ctx context.Context, source string) (*UpdateInfo, error) {
@@ -93,7 +96,7 @@ func extractVersion(s string) (*semver.Version, error) {
 	found := true
 	for found {
 		ext := filepath.Ext(s)
-		if _, found = extensions[ext]; found {
+		if _, found = commonExtensions[ext]; found {
 			s = strings.TrimSuffix(s, ext)
 		}
 	}
@@ -110,54 +113,4 @@ func extractVersion(s string) (*semver.Version, error) {
 		return nil, fmt.Errorf("%q: %w", s, err)
 	}
 	return res, nil
-}
-
-func parseHTML(pageURL *url.URL, pageHTML io.Reader) map[*url.URL]*semver.Version {
-	d := xml.NewDecoder(pageHTML)
-	d.Strict = false
-	d.AutoClose = xml.HTMLAutoClose
-	d.Entity = xml.HTMLEntity
-
-	res := make(map[*url.URL]*semver.Version)
-	for {
-		t, err := d.Token()
-		if err != nil {
-			break
-		}
-
-		el, ok := t.(xml.StartElement)
-		if !ok {
-			continue
-		}
-
-		if el.Name.Local != "a" {
-			continue
-		}
-		for _, attr := range el.Attr {
-			if attr.Name.Local != "href" {
-				continue
-			}
-
-			v, err := extractVersion(attr.Value)
-			if err != nil {
-				continue
-			}
-
-			if v.Prerelease() != "" {
-				continue
-			}
-
-			u, err := url.Parse(attr.Value)
-			if err != nil {
-				continue
-			}
-			if u.Host == "" {
-				u = pageURL.ResolveReference(u)
-			}
-
-			res[u] = v
-		}
-	}
-
-	return res
 }

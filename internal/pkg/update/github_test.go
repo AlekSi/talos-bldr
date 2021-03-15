@@ -24,6 +24,12 @@ func parseURL(t *testing.T, s string) *url.URL {
 }
 
 func TestLatestGithub(t *testing.T) {
+	// TODO Ask / decide how we call those tests, should they be run by default, and how.
+
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+
 	t.Parallel()
 
 	for source, expected := range map[string]*UpdateInfo{
