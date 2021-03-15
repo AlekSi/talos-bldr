@@ -66,7 +66,7 @@ var checkUpdatesCmd = &cobra.Command{
 
 				for src := range sources {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					res, err := update.Latest(ctx, src.source)
+					res, err := update.Latest(ctx, src.source, l.Printf)
 					cancel()
 					if err != nil {
 						l.Print(err)

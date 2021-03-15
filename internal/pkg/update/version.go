@@ -5,11 +5,7 @@
 package update
 
 import (
-	"context"
-	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -30,60 +26,7 @@ var (
 	}
 )
 
-type UpdateInfo struct {
-	// Current version, as extracted from the source URL.
-	CurrentVersion string
-	// Latest version, as determined by the updater.
-	LatestVersion string
-	// Latest version's full absolute URL of the source.
-	LatestURL string
-}
-
-func Latest(ctx context.Context, source string) (*UpdateInfo, error) {
-	currentVersion, err := extractVersion(source)
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := url.Parse(source)
-	if err != nil {
-		return nil, err
-	}
-	dirU := *u
-	dirU.Path = filepath.Dir(u.Path)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", dirU.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	versions := parseHTML(u, resp.Body)
-	if len(versions) == 0 {
-		return nil, fmt.Errorf("no versions found in HTML")
-	}
-	latest := semver.MustParse("0.0.0")
-	var latestURL *url.URL
-	for u, v := range versions {
-		if latest.LessThan(v) {
-			latestURL = u
-			latest = v
-		}
-	}
-
-	return &UpdateInfo{
-		CurrentVersion: currentVersion.String(),
-		LatestVersion:  latest.String(),
-		LatestURL:      latestURL,
-	}, nil
-}
-
 // extractVersion extracts SemVer version from file name or URL.
-// If version can't be extracted, nil is returned.
 func extractVersion(s string) (*semver.Version, error) {
 	// extract file name
 	u, err := url.Parse(s)

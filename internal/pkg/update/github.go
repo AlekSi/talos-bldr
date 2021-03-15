@@ -13,13 +13,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/AlekSi/pointer"
 	"github.com/Masterminds/semver"
 	"github.com/google/go-github/v33/github"
 	"golang.org/x/oauth2"
 )
-
-type printfFunc func(format string, v ...interface{})
 
 var (
 	getClientOnce   sync.Once
@@ -46,44 +43,38 @@ func getClient() *github.Client {
 }
 
 func latestGithub(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo, error) {
-	// sanity check
 	sourceURL, err := url.Parse(source)
 	if err != nil {
 		return nil, err
 	}
-	if sourceURL.Host != "github.com" {
-		return nil, fmt.Errorf("unexpected host %q", sourceURL.Host)
-	}
-
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
-	tags, _, err := getClient().Repositories.ListTags(ctx, owner, repo, nil)
+
+	tags, err := getAllTags(ctx, owner, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	var latestVersion *semver.Version
-	var latestTag *github.RepositoryTag
-	var latestURL *url.URL
-	for _, latestTag = range tags {
-		latestVersion, err = semver.NewVersion(*latestTag.Name)
+	var latestVersion semver.Version
+	var latestURL string
+	for _, tag := range tags {
+		v, err := semver.NewVersion(*tag.Name)
 		if err != nil {
 			debugf("%s", err)
 			continue
 		}
 
-		if latestVersion.Prerelease() != "" {
-			debugf("%s - skipping pre-release", latestVersion)
+		if v.Prerelease() != "" {
+			debugf("%s - skipping pre-release", v)
 			continue
 		}
 
-		latestURL, err = url.Parse(pointer.GetString(latestTag.TarballURL))
-		if err != nil {
-			debugf("%s", err)
-			continue
-		}
+		if latestVersion.LessThan(v) {
+			latestVersion = *v
 
-		break
+			// latestTag.TarballURL / ZipballURL are not good enough, construct URL manually
+			latestURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.tar.gz", owner, repo, *tag.Name)
+		}
 	}
 
 	var currentVersion string
@@ -95,5 +86,25 @@ func latestGithub(ctx context.Context, source string, debugf printfFunc) (*Updat
 		LatestVersion:  latestVersion.String(),
 		LatestURL:      latestURL,
 	}
+	return res, nil
+}
+
+func getAllTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
+	var res []*github.RepositoryTag
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+	for {
+		tags, resp, err := getClient().Repositories.ListTags(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, tags...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
 	return res, nil
 }

@@ -5,12 +5,6 @@
 package update
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,6 +12,8 @@ import (
 )
 
 func TestExtractVersion(t *testing.T) {
+	t.Parallel()
+
 	for s, expected := range map[string]string{
 		"https://dl.google.com/go/go1.15.7.src.tar.gz":    "1.15.7",
 		"https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.bz2": "8.43.0",
@@ -27,7 +23,10 @@ func TestExtractVersion(t *testing.T) {
 		"https://ftp.gnu.org/gnu/automake/automake-1.16.tar.gz":   "1.16.0",
 		"https://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz": "1.16.1",
 	} {
+		s, expected := s, expected
 		t.Run(s, func(t *testing.T) {
+			t.Parallel()
+
 			actualV, err := extractVersion(s)
 			require.NoError(t, err)
 			require.NotNil(t, actualV)
