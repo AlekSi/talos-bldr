@@ -14,17 +14,18 @@ import (
 	"sync"
 
 	"github.com/Masterminds/semver"
-	"github.com/google/go-github/v33/github"
+	"github.com/google/go-github/v35/github"
 	"golang.org/x/oauth2"
 )
 
 var (
-	getClientOnce   sync.Once
-	getClientClient *github.Client
+	getGitHubClientOnce sync.Once
+	gitHubClient        *github.Client
 )
 
-func getClient() *github.Client {
-	getClientOnce.Do(func() {
+// getGitHubClient returns configured GitHub client.
+func getGitHubClient() *github.Client {
+	getGitHubClientOnce.Do(func() {
 		token := os.Getenv("BLDR_GITHUB_TOKEN")
 		if token == "" {
 			token = os.Getenv("GITHUB_TOKEN")
@@ -36,10 +37,10 @@ func getClient() *github.Client {
 			httpClient = oauth2.NewClient(context.Background(), src)
 		}
 
-		getClientClient = github.NewClient(httpClient)
+		gitHubClient = github.NewClient(httpClient)
 	})
 
-	return getClientClient
+	return gitHubClient
 }
 
 func latestGithub(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo, error) {
@@ -47,8 +48,20 @@ func latestGithub(ctx context.Context, source string, debugf printfFunc) (*Updat
 	if err != nil {
 		return nil, err
 	}
+
+	if sourceURL.Host != "github.com" {
+		return nil, fmt.Errorf("unexpected host %q", sourceURL.Host)
+	}
+
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
+
+	releases, err := getAllReleases(ctx, owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = releases
 
 	tags, err := getAllTags(ctx, owner, repo)
 	if err != nil {
@@ -89,13 +102,33 @@ func latestGithub(ctx context.Context, source string, debugf printfFunc) (*Updat
 	return res, nil
 }
 
+func getAllReleases(ctx context.Context, owner, repo string) ([]*github.RepositoryRelease, error) {
+	var res []*github.RepositoryRelease
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+	for {
+		tags, resp, err := getGitHubClient().Repositories.ListReleases(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, tags...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return res, nil
+}
+
 func getAllTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
 	var res []*github.RepositoryTag
 	opts := &github.ListOptions{
 		PerPage: 100,
 	}
 	for {
-		tags, resp, err := getClient().Repositories.ListTags(ctx, owner, repo, opts)
+		tags, resp, err := getGitHubClient().Repositories.ListTags(ctx, owner, repo, opts)
 		if err != nil {
 			return nil, err
 		}

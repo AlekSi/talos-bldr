@@ -101,6 +101,14 @@ Validation step could also be executed separately as the first step before runni
 bldr validate
 ```
 
+
+## Known issues
+
+### Checksum mismatches
+
+See https://github.com/Homebrew/homebrew-core/issues/18044.
+
+
 ## Format
 
 `bldr` expect following directory structure:
