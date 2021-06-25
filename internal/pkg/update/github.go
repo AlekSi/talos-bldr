@@ -109,11 +109,11 @@ func getAllReleases(ctx context.Context, owner, repo string) ([]*github.Reposito
 		PerPage: 100,
 	}
 	for {
-		tags, resp, err := getGitHubClient().Repositories.ListReleases(ctx, owner, repo, opts)
+		page, resp, err := getGitHubClient().Repositories.ListReleases(ctx, owner, repo, opts)
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, tags...)
+		res = append(res, page...)
 		if resp.NextPage == 0 {
 			break
 		}
@@ -123,8 +123,24 @@ func getAllReleases(ctx context.Context, owner, repo string) ([]*github.Reposito
 	return res, nil
 }
 
-func getAllReleaseAssets(ctx context.Context, owner, repo string) {
-	getGitHubClient().Repositories.ListReleaseAssets(ctx context.Context, owner string, repo string, id int64, opts *github.ListOptions)
+func getAllReleaseAssets(ctx context.Context, owner, repo string, releaseID int64) ([]*github.ReleaseAsset, error) {
+	var res []*github.ReleaseAsset
+	opts := &github.ListOptions{
+		PerPage: 100,
+	}
+	for {
+		page, resp, err := getGitHubClient().Repositories.ListReleaseAssets(ctx, owner, repo, releaseID, opts)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, page...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return res, nil
 }
 
 func getAllTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
@@ -133,11 +149,11 @@ func getAllTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTa
 		PerPage: 100,
 	}
 	for {
-		tags, resp, err := getGitHubClient().Repositories.ListTags(ctx, owner, repo, opts)
+		page, resp, err := getGitHubClient().Repositories.ListTags(ctx, owner, repo, opts)
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, tags...)
+		res = append(res, page...)
 		if resp.NextPage == 0 {
 			break
 		}
