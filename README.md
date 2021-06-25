@@ -106,6 +106,8 @@ bldr validate
 
 ### Checksum mismatches
 
+https://git.io/JnAV5
+
 See https://github.com/Homebrew/homebrew-core/issues/18044.
 
 

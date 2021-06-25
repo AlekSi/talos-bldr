@@ -61,6 +61,7 @@ func latestGithub(ctx context.Context, source string, debugf printfFunc) (*Updat
 		return nil, err
 	}
 
+	// TODO
 	_ = releases
 
 	tags, err := getAllTags(ctx, owner, repo)
@@ -120,6 +121,10 @@ func getAllReleases(ctx context.Context, owner, repo string) ([]*github.Reposito
 	}
 
 	return res, nil
+}
+
+func getAllReleaseAssets(ctx context.Context, owner, repo string) {
+	getGitHubClient().Repositories.ListReleaseAssets(ctx context.Context, owner string, repo string, id int64, opts *github.ListOptions)
 }
 
 func getAllTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
