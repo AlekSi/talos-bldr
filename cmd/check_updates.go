@@ -21,13 +21,13 @@ import (
 )
 
 type packageInfo struct {
-	name   string
+	file   string
 	source string
 }
 
 type updateInfo struct {
+	file string
 	*update.UpdateInfo
-	name string
 }
 
 var all bool
@@ -73,8 +73,8 @@ var checkUpdatesCmd = &cobra.Command{
 						continue
 					}
 					updates <- &updateInfo{
+						file:       src.file,
 						UpdateInfo: res,
-						name:       src.name,
 					}
 				}
 			}()
@@ -93,7 +93,7 @@ var checkUpdatesCmd = &cobra.Command{
 			for _, step := range node.Pkg.Steps {
 				for _, src := range step.Sources {
 					sources <- &packageInfo{
-						name:   node.Pkg.Name,
+						file:   node.Pkg.FileName,
 						source: src.URL,
 					}
 				}
@@ -104,11 +104,11 @@ var checkUpdatesCmd = &cobra.Command{
 		close(updates)
 		<-done
 
-		sort.Slice(res, func(i, j int) bool { return res[i].name < res[j].name })
+		sort.Slice(res, func(i, j int) bool { return res[i].file < res[j].file })
 
 		for _, u := range res {
-			if all || u.CurrentVersion != u.LatestVersion {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", u.name, u.CurrentVersion, u.LatestVersion, u.LatestURL)
+			if all || u.HasUpdate {
+				fmt.Fprintf(w, "%s\t%t\t%s\n", u.file, u.HasUpdate, u.URL)
 			}
 		}
 

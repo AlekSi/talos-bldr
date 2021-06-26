@@ -116,7 +116,7 @@ func (fspl *FilesystemPackageLoader) loadPkg(path string) (*v1alpha2.Pkg, error)
 		return nil, err
 	}
 
-	return v1alpha2.NewPkg(filepath.Dir(basePath), contents, fspl.Context)
+	return v1alpha2.NewPkg(filepath.Dir(basePath), path, contents, fspl.Context)
 }
 
 func (fspl *FilesystemPackageLoader) loadPkgfile() error {

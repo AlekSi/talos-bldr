@@ -199,7 +199,7 @@ func fetchPkgs(ctx context.Context, c client.Client) (client.Reference, error) {
 		llb.WithCustomName(name),
 	)
 
-	def, err := src.Marshal()
+	def, err := src.Marshal(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal local source: %q", err)
 	}

@@ -28,15 +28,17 @@ type Pkg struct {
 	Steps        Steps        `yaml:"steps,omitempty"`
 	Finalize     []Finalize   `yaml:"finalize,omitempty"`
 
-	BaseDir string `yaml:"-"`
+	BaseDir  string `yaml:"-"`
+	FileName string `yaml:"-"`
 }
 
 // NewPkg loads Pkg structure from file.
-func NewPkg(baseDir string, contents []byte, vars types.Variables) (*Pkg, error) {
+func NewPkg(baseDir, fileName string, contents []byte, vars types.Variables) (*Pkg, error) {
 	p := &Pkg{
-		BaseDir: baseDir,
-		Shell:   "/bin/sh",
-		Variant: Alpine,
+		BaseDir:  baseDir,
+		FileName: fileName,
+		Shell:    "/bin/sh",
+		Variant:  Alpine,
 	}
 
 	tmpl, err := template.New(constants.PkgYaml).
