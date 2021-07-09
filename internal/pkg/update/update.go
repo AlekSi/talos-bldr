@@ -29,7 +29,7 @@ func Latest(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo,
 
 	switch u.Host {
 	case "github.com":
-		res, err := latestGitHub(ctx, source, debugf)
+		res, err := newGitHub(getGitHubToken()).Latest(ctx, source)
 		if _, ok := err.(*github.RateLimitError); ok {
 			err = fmt.Errorf("%w\nSet `BLDR_GITHUB_TOKEN` or `GITHUB_TOKEN` environment variable.", err)
 		}
@@ -38,5 +38,4 @@ func Latest(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo,
 	default:
 		return nil, fmt.Errorf("unhandled host %q", u.Host)
 	}
-
 }

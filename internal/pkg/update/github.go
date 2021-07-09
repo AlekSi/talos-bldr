@@ -11,65 +11,63 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/google/go-github/v35/github"
 	"golang.org/x/oauth2"
 )
 
-var (
-	getGitHubClientOnce sync.Once
-	gitHubClient        *github.Client
-)
-
-// getGitHubClient returns configured GitHub client.
-func getGitHubClient() *github.Client {
-	getGitHubClientOnce.Do(func() {
-		token := os.Getenv("BLDR_GITHUB_TOKEN")
-		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN")
-		}
-
-		var httpClient *http.Client
-		if token != "" {
-			src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-			httpClient = oauth2.NewClient(context.Background(), src)
-		}
-
-		gitHubClient = github.NewClient(httpClient)
-	})
-
-	return gitHubClient
+func getGitHubToken() string {
+	token := os.Getenv("BLDR_GITHUB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN")
+	}
+	return token
 }
 
-func latestGitHub(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo, error) {
+type gitHub struct {
+	c *github.Client
+}
+
+func newGitHub(token string) *gitHub {
+	var c *http.Client
+	if token != "" {
+		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		c = oauth2.NewClient(context.Background(), src)
+	}
+
+	return &gitHub{
+		c: github.NewClient(c),
+	}
+}
+
+func (g *gitHub) Latest(ctx context.Context, source string) (*UpdateInfo, error) {
 	sourceURL, err := url.Parse(source)
 	if err != nil {
 		return nil, err
 	}
 
 	if sourceURL.Host != "github.com" {
-		return nil, fmt.Errorf("unexpected host %q", sourceURL.Host)
+		panic(fmt.Sprintf("unexpected host %q", sourceURL.Host))
 	}
 
-	releases, err := getReleases(ctx, sourceURL)
+	releases, err := g.getReleases(ctx, sourceURL)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(releases) != 0 {
-		return latestGitHubRelease(ctx, releases, sourceURL, debugf)
+		return g.latestRelease(ctx, releases, sourceURL)
 	}
 
-	tags, err := getTags(ctx, sourceURL)
+	tags, err := g.getTags(ctx, sourceURL)
 	if err != nil {
 		return nil, err
 	}
 
-	return latestGitHubTag(ctx, tags, sourceURL, debugf)
+	return g.latestTag(ctx, tags, sourceURL)
 }
 
-func latestGitHubRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL, debugf printfFunc) (*UpdateInfo, error) {
+func (g *gitHub) latestRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL) (*UpdateInfo, error) {
 	// find newest release
 	newest := releases[0]
 	for _, release := range releases {
@@ -77,8 +75,6 @@ func latestGitHubRelease(ctx context.Context, releases []*github.RepositoryRelea
 			newest = release
 		}
 	}
-
-	debugf("Newest release: %+v", newest)
 
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
@@ -99,7 +95,7 @@ func latestGitHubRelease(ctx context.Context, releases []*github.RepositoryRelea
 	return res, nil
 }
 
-func latestGitHubTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL, debugf printfFunc) (*UpdateInfo, error) {
+func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL) (*UpdateInfo, error) {
 	return &UpdateInfo{}, nil
 
 	// var latestVersion semver.Version
@@ -141,7 +137,7 @@ func latestGitHubTag(ctx context.Context, tags []*github.RepositoryTag, sourceUR
 	// return res, nil
 }
 
-func getReleases(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryRelease, error) {
+func (g *gitHub) getReleases(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryRelease, error) {
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
 
@@ -149,14 +145,14 @@ func getReleases(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryR
 		PerPage: 100,
 	}
 
-	res, _, err := getGitHubClient().Repositories.ListReleases(ctx, owner, repo, opts)
+	res, _, err := g.c.Repositories.ListReleases(ctx, owner, repo, opts)
 	if len(res) == 100 {
 		return res, fmt.Errorf("got %d results, pagination should be implemented", len(res))
 	}
 	return res, err
 }
 
-func getTags(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryTag, error) {
+func (g *gitHub) getTags(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryTag, error) {
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
 
@@ -164,7 +160,7 @@ func getTags(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryTag, 
 		PerPage: 100,
 	}
 
-	res, _, err := getGitHubClient().Repositories.ListTags(ctx, owner, repo, opts)
+	res, _, err := g.c.Repositories.ListTags(ctx, owner, repo, opts)
 	if len(res) == 100 {
 		return res, fmt.Errorf("got %d results, pagination should be implemented", len(res))
 	}
