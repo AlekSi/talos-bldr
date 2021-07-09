@@ -31,31 +31,37 @@ func TestLatestGithub(t *testing.T) {
 		// https://github.com/pullmoll/musl-fts/releases has only tags.
 		"https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.6.tar.gz": {
 			HasUpdate: true,
-			URL:       "https://github.com/pullmoll/musl-fts/releases/",
+			BaseURL:   "https://github.com/pullmoll/musl-fts/releases/",
+			LatestURL: "https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.7.tar.gz",
 		},
 		"https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.7.tar.gz": {
 			HasUpdate: false,
-			URL:       "https://github.com/pullmoll/musl-fts/releases/",
+			BaseURL:   "https://github.com/pullmoll/musl-fts/releases/",
+			LatestURL: "https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.7.tar.gz",
 		},
 
 		// https://github.com/golang/protobuf/releases has releases without extra assets.
 		"https://github.com/golang/protobuf/archive/refs/tags/v1.5.1.tar.gz": {
 			HasUpdate: true,
-			URL:       "https://github.com/golang/protobuf/releases/",
+			BaseURL:   "https://github.com/golang/protobuf/releases/",
+			LatestURL: "https://github.com/golang/protobuf/archive/refs/tags/v1.5.2.tar.gz",
 		},
 		"https://github.com/golang/protobuf/archive/refs/tags/v1.5.2.tar.gz": {
-			HasUpdate: true,
-			URL:       "https://github.com/golang/protobuf/releases/",
+			HasUpdate: false,
+			BaseURL:   "https://github.com/golang/protobuf/releases/",
+			LatestURL: "https://github.com/golang/protobuf/archive/refs/tags/v1.5.2.tar.gz",
 		},
 
 		// https://github.com/protocolbuffers/protobuf/releases has releases with extra assets.
 		"https://github.com/protocolbuffers/protobuf/releases/download/v3.15.6/protobuf-cpp-3.15.6.tar.gz": {
 			HasUpdate: true,
-			URL:       "https://github.com/protocolbuffers/protobuf/releases/",
+			BaseURL:   "https://github.com/protocolbuffers/protobuf/releases/",
+			LatestURL: "", // we don't know yet which asset to use
 		},
 		"https://github.com/protocolbuffers/protobuf/releases/download/v3.17.3/protobuf-cpp-3.17.3.tar.gz": {
 			HasUpdate: false,
-			URL:       "https://github.com/protocolbuffers/protobuf/releases/",
+			BaseURL:   "https://github.com/protocolbuffers/protobuf/releases/",
+			LatestURL: "https://github.com/protocolbuffers/protobuf/releases/download/v3.17.3/protobuf-cpp-3.17.3.tar.gz",
 		},
 	} {
 		source, expected := source, expected

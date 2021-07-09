@@ -108,7 +108,7 @@ var checkUpdatesCmd = &cobra.Command{
 
 		for _, u := range res {
 			if all || u.HasUpdate {
-				fmt.Fprintf(w, "%s\t%t\t%s\n", u.file, u.HasUpdate, u.URL)
+				fmt.Fprintf(w, "%s\t%t\t%s\n", u.file, u.HasUpdate, u.BaseURL)
 			}
 		}
 

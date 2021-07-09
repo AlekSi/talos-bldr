@@ -98,7 +98,7 @@ func (g *gitHub) latestRelease(ctx context.Context, releases []*github.Repositor
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
 	res := &UpdateInfo{
-		URL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
+		BaseURL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
 	}
 
 	// update is available if the newest release doesn't have source in their assets download URLs
@@ -106,6 +106,7 @@ func (g *gitHub) latestRelease(ctx context.Context, releases []*github.Repositor
 	for _, asset := range newest.Assets {
 		if asset.GetBrowserDownloadURL() == source {
 			res.HasUpdate = false
+			res.LatestURL = source
 			return res, nil
 		}
 	}
@@ -131,7 +132,6 @@ func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, so
 			continue
 		}
 
-		// tagDate := tag.GetCommit().GetCommitter().GetDate()
 		tagDate, err := g.getCommitTime(ctx, owner, repo, tag.GetCommit().GetSHA())
 		if err != nil {
 			return nil, err
@@ -148,11 +148,14 @@ func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, so
 	}
 
 	res := &UpdateInfo{
-		URL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
+		BaseURL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
 	}
 
+	// newest.GetTarballURL() is not good enough
+	newestURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", owner, repo, newest.GetName())
+
 	// update is available if the newest tag doesn't have the same tarball URL
-	if newest.GetTarballURL() == sourceURL.String() {
+	if newestURL == sourceURL.String() {
 		res.HasUpdate = false
 		return res, nil
 	}

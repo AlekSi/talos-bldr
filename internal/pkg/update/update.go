@@ -15,8 +15,10 @@ import (
 type UpdateInfo struct {
 	// HasUpdate is true if there seems to be an update available.
 	HasUpdate bool
-	// URL may contain base URL for releases.
-	URL string
+	// BaseURL may contain base URL for releases.
+	BaseURL string
+	// LatestURL may contain URL for the latest asset.
+	LatestURL string
 }
 
 type printfFunc func(format string, v ...interface{})
