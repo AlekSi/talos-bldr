@@ -149,13 +149,12 @@ func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, so
 
 	res := &UpdateInfo{
 		BaseURL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
+		// newest.GetTarballURL() is not good enough
+		LatestURL: fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", owner, repo, newest.GetName()),
 	}
 
-	// newest.GetTarballURL() is not good enough
-	newestURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", owner, repo, newest.GetName())
-
 	// update is available if the newest tag doesn't have the same tarball URL
-	if newestURL == sourceURL.String() {
+	if res.LatestURL == sourceURL.String() {
 		res.HasUpdate = false
 		return res, nil
 	}
