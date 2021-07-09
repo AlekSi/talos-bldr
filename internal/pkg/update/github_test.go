@@ -7,8 +7,6 @@ package update
 import (
 	"context"
 	"net/http"
-	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,13 +29,13 @@ func TestLatestGithub(t *testing.T) {
 
 	for source, expected := range map[string]*UpdateInfo{
 		// https://github.com/pullmoll/musl-fts/releases has only tags.
-		"https://github.com/pullmoll/musl-fts/archive/refs/tags/1.2.6.tar.gz": {
+		"https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.6.tar.gz": {
 			HasUpdate: true,
-			URL:       "https:/github.com/pullmoll/musl-fts/releases/",
+			URL:       "https://github.com/pullmoll/musl-fts/releases/",
 		},
-		"https://github.com/pullmoll/musl-fts/archive/refs/tags/1.2.7.tar.gz": {
+		"https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.7.tar.gz": {
 			HasUpdate: false,
-			URL:       "https:/github.com/pullmoll/musl-fts/releases/",
+			URL:       "https://github.com/pullmoll/musl-fts/releases/",
 		},
 
 		// https://github.com/golang/protobuf/releases has releases without extra assets.
@@ -62,12 +60,7 @@ func TestLatestGithub(t *testing.T) {
 	} {
 		source, expected := source, expected
 
-		u, err := url.Parse(source)
-		require.NoError(t, err)
-		parts := strings.Split(u.Path, "/")
-		owner, repo := parts[1], parts[2]
-
-		t.Run(owner+"/"+repo, func(t *testing.T) {
+		t.Run(source, func(t *testing.T) {
 			t.Parallel()
 
 			// check that source is actually working (with optional redirects)

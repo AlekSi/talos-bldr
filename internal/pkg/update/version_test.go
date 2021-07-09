@@ -21,7 +21,7 @@ func TestExtractVersion(t *testing.T) {
 		"https://ftp.gnu.org/gnu/automake/automake-1.16.tar.gz":   "1.16.0",
 		"https://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.xz": "1.16.1",
 
-		"https://github.com/pullmoll/musl-fts/archive/refs/tags/1.2.7.tar.gz":                              "1.2.7",
+		"https://github.com/pullmoll/musl-fts/archive/refs/tags/v1.2.7.tar.gz":                             "1.2.7",
 		"https://github.com/protocolbuffers/protobuf/releases/download/v3.17.3/protobuf-cpp-3.17.3.tar.gz": "3.17.3",
 	} {
 		s, expected := s, expected

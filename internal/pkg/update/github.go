@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v35/github"
 	"golang.org/x/oauth2"
@@ -50,30 +51,48 @@ func (g *gitHub) Latest(ctx context.Context, source string) (*UpdateInfo, error)
 		panic(fmt.Sprintf("unexpected host %q", sourceURL.Host))
 	}
 
-	releases, err := g.getReleases(ctx, sourceURL)
+	parts := strings.Split(sourceURL.Path, "/")
+	owner, repo := parts[1], parts[2]
+
+	v, err := extractVersion(source)
+	if err != nil {
+		return nil, err
+	}
+
+	considerPrereleases := v.Prerelease() != ""
+
+	releases, err := g.getReleases(ctx, owner, repo)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(releases) != 0 {
-		return g.latestRelease(ctx, releases, sourceURL)
+		return g.latestRelease(ctx, releases, sourceURL, considerPrereleases)
 	}
 
-	tags, err := g.getTags(ctx, sourceURL)
+	tags, err := g.getTags(ctx, owner, repo)
 	if err != nil {
 		return nil, err
 	}
 
-	return g.latestTag(ctx, tags, sourceURL)
+	return g.latestTag(ctx, tags, sourceURL, considerPrereleases)
 }
 
-func (g *gitHub) latestRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL) (*UpdateInfo, error) {
+func (g *gitHub) latestRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL, considerPrereleases bool) (*UpdateInfo, error) {
 	// find newest release
-	newest := releases[0]
+	var newest *github.RepositoryRelease
 	for _, release := range releases {
-		if newest.CreatedAt.Before(release.CreatedAt.Time) {
+		if release.GetPrerelease() && !considerPrereleases {
+			continue
+		}
+
+		if newest == nil || newest.CreatedAt.Before(release.CreatedAt.Time) {
 			newest = release
 		}
+	}
+
+	if newest == nil {
+		return nil, fmt.Errorf("no release found")
 	}
 
 	parts := strings.Split(sourceURL.Path, "/")
@@ -95,52 +114,54 @@ func (g *gitHub) latestRelease(ctx context.Context, releases []*github.Repositor
 	return res, nil
 }
 
-func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL) (*UpdateInfo, error) {
-	return &UpdateInfo{}, nil
-
-	// var latestVersion semver.Version
-	// var latestURL string
-	// for _, tag := range tags {
-	// 	v, err := semver.NewVersion(*tag.Name)
-	// 	if err != nil {
-	// 		debugf("%s", err)
-	// 		continue
-	// 	}
-
-	// 	if v.Prerelease() != "" {
-	// 		debugf("%s - skipping pre-release", v)
-	// 		continue
-	// 	}
-
-	// 	if latestVersion.LessThan(v) {
-	// 		latestVersion = *v
-
-	// 		// latestTag.TarballURL / ZipballURL are not good enough, construct URL manually
-	// 		latestURL = fmt.Sprintf("https://github.com/%s/%s/archive/%s.tar.gz", owner, repo, *tag.Name)
-	// 	}
-	// }
-
-	// var currentVersion string
-	// if current, _ := extractVersion(source); current != nil {
-	// 	currentVersion = current.String()
-	// }
-
-	// _ = currentVersion
-	// _ = latestURL
-
-	// res := &UpdateInfo{
-	// 	HasUpdate: true,
-	// 	// CurrentVersion: currentVersion,
-	// 	// LatestVersion:  latestVersion.String(),
-	// 	// LatestURL:      latestURL,
-	// }
-	// return res, nil
-}
-
-func (g *gitHub) getReleases(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryRelease, error) {
+func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL, considerPrereleases bool) (*UpdateInfo, error) {
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
 
+	// find newest tag
+	var newest *github.RepositoryTag
+	var newestDate time.Time
+	for _, tag := range tags {
+		v, err := extractVersion(tag.GetName())
+		if err != nil {
+			return nil, err
+		}
+
+		if v.Prerelease() != "" && !considerPrereleases {
+			continue
+		}
+
+		// tagDate := tag.GetCommit().GetCommitter().GetDate()
+		tagDate, err := g.getCommitTime(ctx, owner, repo, tag.GetCommit().GetSHA())
+		if err != nil {
+			return nil, err
+		}
+
+		if newest == nil || newestDate.Before(tagDate) {
+			newest = tag
+			newestDate = tagDate
+		}
+	}
+
+	if newest == nil {
+		return nil, fmt.Errorf("no tag found")
+	}
+
+	res := &UpdateInfo{
+		URL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
+	}
+
+	// update is available if the newest tag doesn't have the same tarball URL
+	if newest.GetTarballURL() == sourceURL.String() {
+		res.HasUpdate = false
+		return res, nil
+	}
+
+	res.HasUpdate = true
+	return res, nil
+}
+
+func (g *gitHub) getReleases(ctx context.Context, owner, repo string) ([]*github.RepositoryRelease, error) {
 	opts := &github.ListOptions{
 		PerPage: 100,
 	}
@@ -152,10 +173,7 @@ func (g *gitHub) getReleases(ctx context.Context, sourceURL *url.URL) ([]*github
 	return res, err
 }
 
-func (g *gitHub) getTags(ctx context.Context, sourceURL *url.URL) ([]*github.RepositoryTag, error) {
-	parts := strings.Split(sourceURL.Path, "/")
-	owner, repo := parts[1], parts[2]
-
+func (g *gitHub) getTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
 	opts := &github.ListOptions{
 		PerPage: 100,
 	}
@@ -165,4 +183,18 @@ func (g *gitHub) getTags(ctx context.Context, sourceURL *url.URL) ([]*github.Rep
 		return res, fmt.Errorf("got %d results, pagination should be implemented", len(res))
 	}
 	return res, err
+}
+
+func (g *gitHub) getCommitTime(ctx context.Context, owner, repo, sha string) (time.Time, error) {
+	commit, _, err := g.c.Repositories.GetCommit(ctx, owner, repo, sha)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	t := commit.GetCommit().GetCommitter().GetDate()
+	if t.IsZero() {
+		return time.Time{}, fmt.Errorf("no commit date")
+	}
+
+	return t, nil
 }
