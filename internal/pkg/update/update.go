@@ -8,11 +8,10 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-
-	"github.com/google/go-github/v35/github"
 )
 
-type UpdateInfo struct {
+// LatestInfo represents information about available update.
+type LatestInfo struct {
 	// HasUpdate is true if there seems to be an update available.
 	HasUpdate bool
 	// BaseURL may contain base URL for releases.
@@ -21,9 +20,8 @@ type UpdateInfo struct {
 	LatestURL string
 }
 
-type printfFunc func(format string, v ...interface{})
-
-func Latest(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo, error) {
+// Latest returns information about available update.
+func Latest(ctx context.Context, source string) (*LatestInfo, error) {
 	u, err := url.Parse(source)
 	if err != nil {
 		return nil, err
@@ -31,11 +29,7 @@ func Latest(ctx context.Context, source string, debugf printfFunc) (*UpdateInfo,
 
 	switch u.Host {
 	case "github.com":
-		res, err := newGitHub(getGitHubToken()).Latest(ctx, source)
-		if _, ok := err.(*github.RateLimitError); ok {
-			err = fmt.Errorf("%w\nSet `BLDR_GITHUB_TOKEN` or `GITHUB_TOKEN` environment variable.", err)
-		}
-		return res, err
+		return newGitHub(gitHubTokenFromEnv()).Latest(ctx, source)
 
 	default:
 		return nil, fmt.Errorf("unhandled host %q", u.Host)

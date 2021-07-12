@@ -17,7 +17,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func getGitHubToken() string {
+func gitHubTokenFromEnv() string {
 	token := os.Getenv("BLDR_GITHUB_TOKEN")
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
@@ -41,7 +41,8 @@ func newGitHub(token string) *gitHub {
 	}
 }
 
-func (g *gitHub) Latest(ctx context.Context, source string) (*UpdateInfo, error) {
+// Latest returns information about available update.
+func (g *gitHub) Latest(ctx context.Context, source string) (*LatestInfo, error) {
 	sourceURL, err := url.Parse(source)
 	if err != nil {
 		return nil, err
@@ -63,22 +64,26 @@ func (g *gitHub) Latest(ctx context.Context, source string) (*UpdateInfo, error)
 
 	releases, err := g.getReleases(ctx, owner, repo)
 	if err != nil {
-		return nil, err
+		return nil, g.wrapGitHubError(err)
 	}
 
 	if len(releases) != 0 {
-		return g.latestRelease(ctx, releases, sourceURL, considerPrereleases)
+		return g.findLatestRelease(ctx, releases, sourceURL, considerPrereleases)
 	}
 
 	tags, err := g.getTags(ctx, owner, repo)
 	if err != nil {
-		return nil, err
+		return nil, g.wrapGitHubError(err)
 	}
 
-	return g.latestTag(ctx, tags, sourceURL, considerPrereleases)
+	return g.findLatestTag(ctx, tags, sourceURL, considerPrereleases)
 }
 
-func (g *gitHub) latestRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL, considerPrereleases bool) (*UpdateInfo, error) {
+// findLatestRelease returns information about latest released version.
+func (g *gitHub) findLatestRelease(ctx context.Context, releases []*github.RepositoryRelease, sourceURL *url.URL, considerPrereleases bool) (*LatestInfo, error) {
+	parts := strings.Split(sourceURL.Path, "/")
+	owner, repo := parts[1], parts[2]
+
 	// find newest release
 	var newest *github.RepositoryRelease
 	for _, release := range releases {
@@ -95,14 +100,21 @@ func (g *gitHub) latestRelease(ctx context.Context, releases []*github.Repositor
 		return nil, fmt.Errorf("no release found")
 	}
 
-	parts := strings.Split(sourceURL.Path, "/")
-	owner, repo := parts[1], parts[2]
-	res := &UpdateInfo{
+	res := &LatestInfo{
 		BaseURL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
 	}
 
-	// update is available if the newest release doesn't have source in their assets download URLs
 	source := sourceURL.String()
+
+	// treat releases without extra assets as tags
+	if len(newest.Assets) == 0 {
+		// update is available if the release doesn't have the same tarball URL
+		res.LatestURL = g.getTagGZ(owner, repo, newest.GetTagName())
+		res.HasUpdate = res.LatestURL != source
+		return res, nil
+	}
+
+	// update is available if the newest release doesn't have source in their assets download URLs
 	for _, asset := range newest.Assets {
 		if asset.GetBrowserDownloadURL() == source {
 			res.HasUpdate = false
@@ -111,11 +123,13 @@ func (g *gitHub) latestRelease(ctx context.Context, releases []*github.Repositor
 		}
 	}
 
+	// we don't know correct asset URL
 	res.HasUpdate = true
 	return res, nil
 }
 
-func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL, considerPrereleases bool) (*UpdateInfo, error) {
+// findLatestTag returns information about latest tagged version.
+func (g *gitHub) findLatestTag(ctx context.Context, tags []*github.RepositoryTag, sourceURL *url.URL, considerPrereleases bool) (*LatestInfo, error) {
 	parts := strings.Split(sourceURL.Path, "/")
 	owner, repo := parts[1], parts[2]
 
@@ -147,22 +161,17 @@ func (g *gitHub) latestTag(ctx context.Context, tags []*github.RepositoryTag, so
 		return nil, fmt.Errorf("no tag found")
 	}
 
-	res := &UpdateInfo{
-		BaseURL: fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
-		// newest.GetTarballURL() is not good enough
-		LatestURL: fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", owner, repo, newest.GetName()),
+	res := &LatestInfo{
+		BaseURL:   fmt.Sprintf("https://github.com/%s/%s/releases/", owner, repo),
+		LatestURL: g.getTagGZ(owner, repo, newest.GetName()),
 	}
 
 	// update is available if the newest tag doesn't have the same tarball URL
-	if res.LatestURL == sourceURL.String() {
-		res.HasUpdate = false
-		return res, nil
-	}
-
-	res.HasUpdate = true
+	res.HasUpdate = res.LatestURL != sourceURL.String()
 	return res, nil
 }
 
+// getReleases returns all releases.
 func (g *gitHub) getReleases(ctx context.Context, owner, repo string) ([]*github.RepositoryRelease, error) {
 	opts := &github.ListOptions{
 		PerPage: 100,
@@ -175,6 +184,7 @@ func (g *gitHub) getReleases(ctx context.Context, owner, repo string) ([]*github
 	return res, err
 }
 
+// getTags returns all tags.
 func (g *gitHub) getTags(ctx context.Context, owner, repo string) ([]*github.RepositoryTag, error) {
 	opts := &github.ListOptions{
 		PerPage: 100,
@@ -187,6 +197,7 @@ func (g *gitHub) getTags(ctx context.Context, owner, repo string) ([]*github.Rep
 	return res, err
 }
 
+// getCommitTime returns commit's time.
 func (g *gitHub) getCommitTime(ctx context.Context, owner, repo, sha string) (time.Time, error) {
 	commit, _, err := g.c.Repositories.GetCommit(ctx, owner, repo, sha)
 	if err != nil {
@@ -199,4 +210,22 @@ func (g *gitHub) getCommitTime(ctx context.Context, owner, repo, sha string) (ti
 	}
 
 	return t, nil
+}
+
+// getTagTarball returns .tar.gz URL.
+// API's GetTarballURL is not good enough.
+func (g *gitHub) getTagGZ(owner, repo, name string) string {
+	return fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", owner, repo, name)
+}
+
+func (g *gitHub) wrapGitHubError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if _, ok := err.(*github.RateLimitError); ok {
+		err = fmt.Errorf("%w\nSet `BLDR_GITHUB_TOKEN` or `GITHUB_TOKEN` environment variable.", err)
+	}
+
+	return err
 }

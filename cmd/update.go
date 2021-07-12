@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"sort"
 	"sync"
 	"text/tabwriter"
@@ -20,24 +21,30 @@ import (
 	"github.com/talos-systems/bldr/internal/pkg/update"
 )
 
-type packageInfo struct {
+type pkgInfo struct {
 	file   string
 	source string
 }
 
 type updateInfo struct {
 	file string
-	*update.UpdateInfo
+	*update.LatestInfo
 }
 
-var all bool
+var updateCmdFlag struct {
+	all bool
+	dry bool
+}
 
-// checkUpdatesCmd represents the check-updates command.
-var checkUpdatesCmd = &cobra.Command{
-	Use:   "check-updates",
-	Short: "TODO",
-	Long:  `TODO`,
+// updateCmd represents the `update` command.
+var updateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Update pkgs",
 	Run: func(cmd *cobra.Command, args []string) {
+		if !updateCmdFlag.dry {
+			log.Fatal("Real update is not implemented yet; pass `--dry` flag.")
+		}
+
 		loader := solver.FilesystemPackageLoader{
 			Root:    pkgRoot,
 			Context: options.GetVariables(),
@@ -48,16 +55,14 @@ var checkUpdatesCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-
-		l := log.New(log.Writer(), "[check-updates] ", log.Flags())
+		l := log.New(log.Writer(), "[update] ", log.Flags())
 		if !debug {
 			l.SetOutput(ioutil.Discard)
 		}
 
-		const concurrency = 10
+		concurrency := runtime.GOMAXPROCS(-1)
 		var wg sync.WaitGroup
-		sources := make(chan *packageInfo)
+		sources := make(chan *pkgInfo)
 		updates := make(chan *updateInfo)
 		for i := 0; i < concurrency; i++ {
 			wg.Add(1)
@@ -66,15 +71,16 @@ var checkUpdatesCmd = &cobra.Command{
 
 				for src := range sources {
 					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					res, err := update.Latest(ctx, src.source, l.Printf)
+					res, err := update.Latest(ctx, src.source)
 					cancel()
 					if err != nil {
 						l.Print(err)
 						continue
 					}
+
 					updates <- &updateInfo{
 						file:       src.file,
-						UpdateInfo: res,
+						LatestInfo: res,
 					}
 				}
 			}()
@@ -92,7 +98,7 @@ var checkUpdatesCmd = &cobra.Command{
 		for _, node := range packages.ToSet() {
 			for _, step := range node.Pkg.Steps {
 				for _, src := range step.Sources {
-					sources <- &packageInfo{
+					sources <- &pkgInfo{
 						file:   node.Pkg.FileName,
 						source: src.URL,
 					}
@@ -106,29 +112,26 @@ var checkUpdatesCmd = &cobra.Command{
 
 		sort.Slice(res, func(i, j int) bool { return res[i].file < res[j].file })
 
-		for _, u := range res {
-			if all || u.HasUpdate {
-				fmt.Fprintf(w, "%s\t%t\t%s\n", u.file, u.HasUpdate, u.BaseURL)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", "File", "Update", "URL")
+
+		for _, info := range res {
+			if updateCmdFlag.all || info.HasUpdate {
+				url := info.LatestURL
+				if url == "" {
+					url = info.BaseURL
+				}
+
+				fmt.Fprintf(w, "%s\t%t\t%s\n", info.file, info.HasUpdate, url)
 			}
 		}
-
-		// v, url, err := update.Latest(src.URL)
-		// if err != nil {
-		// 	l.Print(err)
-		// 	continue
-		// }
-		// prefix := "no update"
-		// if url.String() != src.URL {
-		// 	prefix = "update available"
-		// 	fmt.Fprintf(w, "%s\t%s\t%s\n", node.Pkg.Name, v, url)
-		// }
-		// l.Printf("%s %s %s %s", prefix, node.Pkg.Name, v, url)
 
 		w.Flush()
 	},
 }
 
 func init() {
-	checkUpdatesCmd.Flags().BoolVarP(&all, "all", "a", false, "")
-	rootCmd.AddCommand(checkUpdatesCmd)
+	updateCmd.Flags().BoolVarP(&updateCmdFlag.all, "all", "a", false, "List all packages, not only updated")
+	updateCmd.Flags().BoolVar(&updateCmdFlag.dry, "dry", false, "Dry run: check for updates, but not actually update pkgs")
+	rootCmd.AddCommand(updateCmd)
 }
